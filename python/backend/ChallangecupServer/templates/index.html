@@ -1,0 +1,37 @@
+<!doctype html>
+<div style="float:left;font-size:20px;">
+<table border="1">
+     {% for key, value in result.items() %}
+         {% if key == "状态"%}
+             <tr>
+               <th align="middle"> {{ key }} </th>
+             </tr>
+             {% for value2 in value.items() %}
+                 <tr>
+                 <td>{{ value2[0]+":"}}</td>
+                 <td>{{ value2[1] }}</td>
+               </tr>
+             {% endfor %}
+
+         {% elif key =="携带装备"%}
+             <tr>
+               <th align="middle"> {{ key }} </th>
+             </tr>
+             {% for value2 in value.items() %}
+                 <tr>
+                 <td align="left">{{ value2[0]+":"}}</td>
+                 <td align="left">{{ value2[1] }}</td>
+               </tr>
+             {% endfor %}
+         {% else %}
+         <tr>
+         <th> {{ key }} </th>
+         <th> {{ value }} </th>
+         </tr>
+         {% endif %}
+ {% endfor %}
+</table>
+</div>
+{% include "map.html" %}
+
+

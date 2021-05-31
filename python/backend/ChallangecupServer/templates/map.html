@@ -1,0 +1,21 @@
+{% block content %}
+    <link rel="stylesheet" href="https://a.amap.com/jsapi_demos/static/demo-center/css/demo-center.css" />
+    <title>地图显示</title>
+    <style>
+        html,
+        body,
+        #container {
+          width: 80%;
+          height: 75%;
+        }
+    </style>
+<div id="container" style="float:left"></div>
+<script src="https://webapi.amap.com/maps?v=1.4.15&key=您申请的key值"></script>
+<script>
+    var map = new AMap.Map('container', {
+        resizeEnable: true, //是否监控地图容器尺寸变化
+        zoom:11, //初始化地图层级
+        center: [116.397428, 39.90923] //初始化地图中心点
+    });
+</script>
+{% endblock %}

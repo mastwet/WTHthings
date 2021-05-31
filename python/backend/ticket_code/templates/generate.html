@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>河童软科cdk发卡系统</title>
+</head>
+<body>
+<form action="/gen_cdk">
+           请输入淘宝订单号:<br>
+    <input type="text" name="number">
+    <input type="submit" value="生成cdk">
+</form>
+   {% if get %}
+    <h4>您的订单号：{{ number }}</h4>
+    <h4>您的卡号:{{ cdn }}</h4>
+    <h4>您的卡密:{{ cdk }}</h4>
+    <h4>您的凭据（点击右键复制）:</h4>
+       <img src="{{ img }}" />
+   {% endif %}
+   {% if warning %}
+       <h3>请输入有效订单号码！</h3>
+   {% endif %}
+</body>
+</html>
