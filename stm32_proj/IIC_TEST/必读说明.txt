@@ -1,3 +1,0 @@
-IIC解码/编码程序
-author：mastwet
-基于野火工程
