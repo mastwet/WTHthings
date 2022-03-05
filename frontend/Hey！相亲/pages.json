@@ -1,0 +1,102 @@
+{
+	"pages": [ //pages数组中第一项表示应用启动页，参考：https://uniapp.dcloud.io/collocation/pages
+	
+	
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "发现TA",
+				"enablePullDownRefresh": true
+			}
+		},
+		{
+	    "path" : "pages/myself/myself",
+	    "style" :                                                                                    
+	    {
+	        "navigationBarTitleText": "我的",
+	        "enablePullDownRefresh": true
+	    }
+	},
+	{
+	    "path" : "pages/alter/alter",
+	    "style" :                                                                                    
+	    {
+	        "navigationBarTitleText": "修改信息",
+	        "enablePullDownRefresh": true
+	    }
+	},
+	{
+	    "path" : "pages/detail/detail",
+	    "style" :                                                                                    
+	    {
+	        "navigationBarTitleText": "我的信息",
+	        "enablePullDownRefresh": true
+	    }
+	    
+	}
+        ,{
+            "path" : "pages/circle/circle",
+            "style" :                                                                                    
+            {
+                "navigationBarTitleText": "相亲圈",
+                "enablePullDownRefresh": true
+            }
+            
+        }
+        ,{
+            "path" : "pages/message/message",
+            "style" :                                                                                    
+            {
+                "navigationBarTitleText": "消息",
+                "enablePullDownRefresh": true
+            }
+            
+        },
+		{
+		    "path" : "pages/information/information",
+		    "style" :                                                                                    
+		    {
+		        "navigationBarTitleText": "详细信息",
+		        "enablePullDownRefresh": true
+		    }
+		    
+		}
+        
+        
+    ],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8"
+	},
+	"tabBar": {
+	    "color": "#7A7E83",
+	    "selectedColor": "#3cc51f",
+	    "borderStyle": "black",
+	    "backgroundColor": "#ffffff",
+	    "list": [
+		{
+		    "pagePath": "pages/index/index",
+		    "iconPath": "static/images/1.png",
+		    "selectedIconPath": "static/images/1.png",
+		    "text": "发现TA"
+		},{
+	        "pagePath": "pages/circle/circle",
+		    "iconPath": "static/images/2.png",
+		    "selectedIconPath": "static/images/2.png",
+	        "text": "相亲圈"
+	    }, {
+	        "pagePath": "pages/message/message",
+		    "iconPath": "static/images/3.png",
+		    "selectedIconPath": "static/images/3.png",
+	        "text": "消息"
+	    },{
+	        "pagePath": "pages/myself/myself",
+		    "iconPath": "static/images/4.png",
+		    "selectedIconPath": "static/images/4.png",
+	        "text": "我的"
+	    }
+		]
+	}
+}
