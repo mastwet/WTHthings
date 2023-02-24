@@ -1,0 +1,25 @@
+--cpu Cortex-M3
+"xbotbed\startup_stm32f103xb.o"
+"xbotbed\main.o"
+"xbotbed\stm32f1xx_it.o"
+"xbotbed\stm32f1xx_hal_msp.o"
+"xbotbed\stm32f1xx_hal_gpio_ex.o"
+"xbotbed\stm32f1xx_hal_i2c.o"
+"xbotbed\stm32f1xx_hal.o"
+"xbotbed\stm32f1xx_hal_rcc.o"
+"xbotbed\stm32f1xx_hal_rcc_ex.o"
+"xbotbed\stm32f1xx_hal_gpio.o"
+"xbotbed\stm32f1xx_hal_dma.o"
+"xbotbed\stm32f1xx_hal_cortex.o"
+"xbotbed\stm32f1xx_hal_pwr.o"
+"xbotbed\stm32f1xx_hal_flash.o"
+"xbotbed\stm32f1xx_hal_flash_ex.o"
+"xbotbed\stm32f1xx_hal_exti.o"
+"xbotbed\stm32f1xx_hal_tim.o"
+"xbotbed\stm32f1xx_hal_tim_ex.o"
+"xbotbed\stm32f1xx_hal_uart.o"
+"xbotbed\system_stm32f1xx.o"
+--strict --scatter "xbotbed\xbotbed.sct"
+--summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
+--info sizes --info totals --info unused --info veneers
+--list "xbotbed.map" -o xbotbed\xbotbed.axf
