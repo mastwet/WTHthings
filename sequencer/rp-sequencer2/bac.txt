@@ -1,0 +1,631 @@
+#include <U8g2lib.h>
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE, /* clock=*/4, /* data=*/2);
+
+#include <FastLED.h>
+#define LED_PIN 11
+#define NUM_LEDS 16
+CRGB leds[NUM_LEDS];
+
+// #include <MIDI.h>
+
+// MIDI_CREATE_DEFAULT_INSTANCE();
+
+#define BTN_STOP_ALARM 0
+
+hw_timer_t *timer = NULL;
+volatile SemaphoreHandle_t timerSemaphore;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+volatile uint32_t isrCounter = 0;
+volatile uint32_t lastIsrAt = 0;
+
+// Define MIDI note values
+#define NOTE_C4 60
+#define NOTE_E4 64
+#define NOTE_G4 67
+#define NOTE_C5 72
+
+// Define your MIDI sequence here
+const int midiNotes[] = {
+  NOTE_C4,
+  NOTE_E4,
+  NOTE_G4,
+  NOTE_C5,
+  NOTE_G4,
+  NOTE_E4,
+  NOTE_C4,
+  NOTE_C4,
+  NOTE_C4,
+  NOTE_E4,
+  NOTE_G4,
+  NOTE_C5,
+  NOTE_G4,
+  NOTE_E4,
+  NOTE_C4,
+  NOTE_C4,
+  -1  // Rest
+};
+
+const int midiDurations[] = {
+  500,  // Duration for C4
+  500,  // Duration for E4
+  500,  // Duration for G4
+  500,  // Duration for C5
+  500,  // Duration for G4
+  500,  // Duration for E4
+  500,  // Duration for C4
+  500   // Duration for rest
+};
+
+int sequenceIndex = 0;
+bool isPlaying = true;
+
+// BPM and related variables
+int bpm = 128;
+int timerInterval = 60000000 / bpm;
+
+struct piano_note_t {  
+    char description[10];  
+    int midi;  
+};
+
+struct piano_note_t piano_keys[36] = {  
+
+    {"C3", 60}, {"Db3", 61}, {"D3", 62}, {"Eb3", 63}, {"E3", 64}, {"F3", 65}, {"Gb3", 66}, {"G3", 67}, {"Ab3", 68}, {"A3", 69},   
+
+    {"Bb3", 70}, {"B3", 71}, {"C4", 72}, {"Db4", 73}, {"D4", 74}, {"Eb4", 75}, {"E4", 76}, {"F4", 77}, {"Gb4", 78}, {"G4", 79},   
+
+    {"Ab4", 80}, {"A4", 81}, {"Bb4", 82}, {"B4", 83}, {"C5", 84}, {"Db5", 85}, {"D5", 86}, {"Eb5", 87}, {"E5", 88}, {"F5", 89},   
+
+    {"Gb5", 90}, {"G5", 91}, {"Ab5", 92}, {"A5", 93}, {"Bb5", 94}, {"B5", 95}  
+
+}; 
+
+
+
+typedef struct {
+  char number;
+  char sta;
+} key_num_t;
+
+typedef struct {
+  char number;
+  char rotation;
+} knob_num_t;
+
+typedef struct {
+  char type;
+  char number;
+  char message;
+} h_message_t;
+
+QueueHandle_t QueueHandle_h_message;
+const int QueueElementSize = 10;
+
+
+
+void tinytt_send_message(h_message_t message) {
+  if (QueueHandle_h_message != NULL && uxQueueSpacesAvailable(QueueHandle_h_message) > 0) {
+    int ret = xQueueSend(QueueHandle_h_message, (void *)&message, 0);
+    if (ret == pdTRUE) {
+    } else if (ret == errQUEUE_FULL) {
+      Serial.println("The `tinytt_send_message` was unable to send data into the Queue");
+    }
+  }
+}
+
+#define PAD_TYPE 0
+#define KNOB_TYPE 1
+#define BUTTON_TYPE 2
+
+#define KNOB_LEFT 1
+#define KNOB_RIGHT 0
+
+
+
+//更小的光溯读取器
+void ReadFromTimtraceTiny(void *pvParameters) {
+  // put your main code here, to run repeatedly:
+  byte packet[30] = { 0 };
+  byte encoder_state[4] = { 0 };
+
+  int packet_idx = 0;
+  int packet_en = 1;
+  int ban_trans = 0;
+
+
+  while (1) {
+    delay(10);
+    //主程序
+    while (Serial1.available()) {
+
+      //串口阻塞读取程序外判断，是否菜单按下时时间达到标准。如果达到标准执行任务调度。
+      byte data = Serial1.read();
+      packet[packet_idx++] = data;
+
+      if (data == 0xff) {
+        h_message_t h_message;
+        /////////////////////////////////////////
+
+        if (packet[1] == 0x01) {  // Button
+          if (packet[2] == 0x01) {  // Button Pressed
+            //Serial.printf("key %d pressed\n", packet[3]);
+            h_message.type = 0;
+            h_message.number = packet[3];
+            h_message.message = 1;
+          } else if (packet[2] == 0x02) {  // Button Released
+            //Serial.printf("key %d released\n", packet[3]);
+            h_message.type = 0;
+            h_message.number = packet[3];
+            h_message.message = 0;
+          }
+        }
+
+        ////////////////////////////////////////
+        //knob
+        else if (packet[1] == 0xb2) {
+          //if (current_mode == 0) {
+          if (packet[2] == 0xca) {
+            //Serial.printf("knob %d left\n", packet[3] - 1);
+            h_message.type = 1;
+            h_message.number = packet[3];
+            h_message.message = 1;
+            //current_rotation = 1;
+          } else if (packet[2] == 0xcb) {
+            //Serial.printf("knob %d right\n", packet[3] - 1);
+            h_message.type = 1;
+            h_message.number = packet[3];
+            h_message.message = 0;
+            //current_rotation = -1;
+          }
+
+        }
+
+        else if (packet[1] == 0x03) {  // Button
+          if (packet[3] == 0xa1) {
+            //current_mode = 1;
+            h_message.type = 2;
+            h_message.number = packet[2];
+            h_message.message = 0;
+            /*
+            if (packet[2] == 0x05) {
+              Serial.printf("key 1 pressed\n");
+            } else if (packet[2] == 0x06) {
+              Serial.printf("key 2 pressed\n");
+            } else if (packet[2] == 0x07) {
+              Serial.printf("key 3 pressed\n");
+            } else if (packet[2] == 0x08) {
+              Serial.printf("key 4 pressed\n");
+            } else if (packet[2] == 0x04) {
+              Serial.printf("key 5 pressed\n");
+            } else if (packet[2] == 0x03) {
+              Serial.printf("key 6 pressed\n");
+            } else if (packet[2] == 0x02) {
+              Serial.printf("key 7 pressed\n");
+            } else if (packet[2] == 0x01) {
+              Serial.printf("key 8 pressed\n");
+            }
+          */
+          }
+          
+          //按下
+          else if (packet[3] == 0xa2) {
+            h_message.type = 2;
+            h_message.number = packet[2];
+            h_message.message = 1;
+          }
+        }
+
+        if (QueueHandle_h_message != NULL && uxQueueSpacesAvailable(QueueHandle_h_message) > 0) {
+
+          //sprintf(message.message, "Value:%d", midimessage.note_pitch);
+
+          int ret = xQueueSend(QueueHandle_h_message, (void *)&h_message, 0);
+          if (ret == pdTRUE) {
+          } else if (ret == errQUEUE_FULL) {
+            Serial.println("unable to send data into the Queue");
+          }
+          
+        }
+
+        packet_idx = 0;
+      }
+    }
+  }
+}
+void ARDUINO_ISR_ATTR onTimer() {
+  portENTER_CRITICAL_ISR(&timerMux);
+  isrCounter++;
+  lastIsrAt = millis();
+  portEXIT_CRITICAL_ISR(&timerMux);
+  xSemaphoreGiveFromISR(timerSemaphore, NULL);
+}
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(115200);
+  Serial1.begin(115200, SERIAL_8N1, 6, 5);
+
+  QueueHandle_h_message = xQueueCreate(QueueElementSize, sizeof(h_message_t));
+  // Check if the queue was successfully created
+  if (QueueHandle_h_message == NULL || QueueHandle_h_message == NULL) {
+    while (1) {
+      Serial.println("Queue could not be created. Halt.");
+      delay(1000);  // Halt at this point as is not possible to continue
+    }
+  } else {
+    Serial.println("Queue create sucessful.");
+  }
+
+
+
+  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
+
+  u8g2.setBusClock(800000);
+  u8g2.begin();
+  u8g2.setFont(u8g2_font_ncenB08_tr);
+
+  timerSemaphore = xSemaphoreCreateBinary();
+
+  timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, (timerInterval / 4), true);
+  timerAlarmEnable(timer);
+
+  xTaskCreate(
+    ReadFromTimtraceTiny, "timtrace"  // A name just for humans
+    ,
+    2048  // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+    ,
+    (void *)NULL,
+    2  // Priority
+    ,
+    NULL  // Task handle is not used here - simply pass NULL
+  );
+
+  //leds init
+  for (int i = 0; i < 16; i++) {
+    leds[i] = CRGB::Black;
+  }
+}
+
+int mode = 0;  //几种模式：1、cc触发输出 2、音符触发输出 3、钢琴模式 4、随机音序输出模式
+
+/*
+enum key_sta_t {
+  ON,//BLUE
+  RISING,//GREEN
+  OFF
+};
+*/
+
+// typedef struct {
+//   led sta;
+// } led_sta[16];
+
+struct key {
+  int pre;
+  int now;
+};
+
+key cc_on_keymap[16];
+key note_on_keymap[16];
+
+bool cc_trigger_pad[16] = { false };
+
+int current_setting_pad = -1;
+int current_setting_page = 1;
+int current_setting_note = 0;
+
+void draw_setting_key(int keynumber){
+
+  
+  if(current_setting_pad == -1){
+    u8g2.drawStr(0,16,"select your key!");
+    current_setting_pad = keynumber;
+  }
+  else{
+    u8g2.drawStr(0,16,"Setting Note:");
+
+    char buffer[30];
+    sprintf(buffer, "PAD:#%d", (int)keynumber);
+    u8g2.drawStr(0,32,buffer);
+    //String temp = String(keynumber);  
+    //Serial.println(temp);
+    //u8g2.drawStr(0,32,(char*)temp.c_str());
+    sprintf(buffer, "PAGE:%d", (int)current_setting_page);
+    u8g2.drawStr(0,48,buffer);
+
+    sprintf(buffer, "NOTE:%s", piano_keys[current_setting_note].description);
+    u8g2.drawStr(0,64,buffer);
+  }
+
+
+
+  // String temp = String(current_setting_note);  
+  // Serial.println(temp);
+  // u8g2.drawStr(0,36,(char*)temp.c_str());
+
+  
+
+  // temp = String(current_setting_page);  
+  // Serial.println(temp);
+  // u8g2.drawStr(0,48,(char*)temp.c_str());
+
+  for (int i = 0; i < 16; i++) {
+    leds[i] = CRGB::Black;
+  }
+
+  leds[keynumber] = CRGB::Blue;
+  FastLED.show();
+
+  //delay(1000);
+
+}
+
+void change_setting_page(int knob_dire,int knob_number){
+  switch(knob_dire){
+    case KNOB_LEFT:
+    if(knob_number == 4){
+      if(current_setting_note < 38) current_setting_note++;
+    }
+    else if(knob_number == 3){
+      if(current_setting_page == 1) current_setting_page = 2;
+    }
+    break;
+    case KNOB_RIGHT:
+    if(knob_number == 4){
+      if(current_setting_note > 0) current_setting_note--;
+    }
+    else if(knob_number == 3){
+      if(current_setting_page == 2) current_setting_page = 1;
+    }
+    break;
+  }
+}
+
+void u8g2_show_setting_info(){
+
+}
+
+
+void drawLogo(void) {
+
+  for (int j = 0; j < 4; j++) {
+    for (int i = 0; i < 4; i++) {
+      if (cc_trigger_pad[j * 4 + i] == true) {
+        u8g2.drawBox(12 + 10 * i + 2 * i, 7 + 10 * j + 2 * j, 10, 10);
+      } else {
+        u8g2.drawFrame(12 + 10 * i + 2 * i, 7 + 10 * j + 2 * j, 10, 10);
+      }
+    }
+  }
+
+  for (int j = 0; j < 4; j++) {
+    for (int i = 0; i < 4; i++) {
+      u8g2.drawFrame(62 + 10 * i + 2 * i, 7 + 10 * j + 2 * j, 10, 10);
+    }
+  }
+
+
+
+  /*
+  for (int i = 0; i < 2; i++) {
+    u8g2.drawBox(12 + 5 * i + 2 * i, 9, 5, 10);
+  }
+  for (int i = 0; i < 3; i++) {
+    u8g2.drawBox(34 + 5 * i + 2 * i, 9, 5, 10);
+  }
+
+  for (int i = 0; i < 2; i++) {
+    u8g2.drawBox(64 + 5 * i + 2 * i, 9, 5, 10);
+  }
+
+  for (int i = 0; i < 3; i++) {
+    u8g2.drawBox(90 + 5 * i + 2 * i, 9, 5, 10);
+  }
+
+  for (int i = 0; i < 16; i++) {
+    u8g2.drawFrame(5 + 5 * i + 2 * i, 20, 5, 10);
+  }
+
+  for (int i = 0; i < 2; i++) {
+    u8g2.drawBox(12 + 5 * i + 2 * i, 39, 5, 10);
+  }
+  for (int i = 0; i < 3; i++) {
+    u8g2.drawBox(34 + 5 * i + 2 * i, 39, 5, 10);
+  }
+
+  for (int i = 0; i < 2; i++) {
+    u8g2.drawBox(64 + 5 * i + 2 * i, 39, 5, 10);
+  }
+
+  for (int i = 0; i < 3; i++) {
+    u8g2.drawBox(90 + 5 * i + 2 * i, 39, 5, 10);
+  }
+
+  for (int i = 0; i < 16; i++) {
+    u8g2.drawFrame(5 + 5 * i + 2 * i, 50, 5, 10);
+  }
+  */
+}
+
+int fpage_running_mode = 0;
+
+void cc_trigger_mode(h_message_t h_message);
+void note_trigger_mode();
+void piano_mode();
+void cut_mode();
+
+
+
+
+
+int cc_trigger_current_page = 0;
+int note_trigger_current_page = 0;
+int piano_current_page = 0;
+
+int setting_mode = 0;
+int setting_mode_count = 0;
+
+int last_recv_message = 0;
+
+bool sequencer_trigger_pad[16] = { false };
+
+
+
+void loop() {
+
+  h_message_t h_message;
+  int ret = xQueueReceive(QueueHandle_h_message, &h_message, pdMS_TO_TICKS(10));
+  if (ret == pdPASS) {
+    Serial.println("received sucess!");
+  } else if (ret == pdFALSE) {
+    //Serial.println("The `TaskWriteToMIDIUSB` was unable to receive data from the Queue");
+    
+  }
+
+  if (xSemaphoreTake(timerSemaphore, 0) == pdTRUE) {
+
+    if(setting_mode == 0){
+      leds[sequenceIndex] = CRGB::White;
+      leds[sequenceIndex - 1] = CRGB::Black;
+      FastLED.show();
+    }
+    
+    //Serial.println(sequenceIndex);
+    // Handle MIDI events here
+    if (midiNotes[sequenceIndex] == -1) {
+      sequenceIndex = 0;
+    } else {
+      sequenceIndex++;
+    }
+    if (sequenceIndex < sizeof(midiNotes) / sizeof(midiNotes[0])) {
+      int note = midiNotes[sequenceIndex];
+      int duration = midiDurations[sequenceIndex];
+
+      if (note >= 0) {
+        //Serial.printf("%d", note);
+
+        if (sequenceIndex == 0) {
+          //Serial.print("-------->a new 4/4 beat.");
+        }
+        // MIDI.sendNoteOn(note, 127, 1); // Channel 1 with maximum velocity
+
+        //Serial.println();
+      } else {
+        // Rest
+      }
+
+      // if(bpmtp<=0) bpmtp=1;
+      // delay(duration);
+      //  if (note >= 0) {
+      //    //MIDI.sendNoteOff(note, 0, 1);
+      //    Serial.printf("%d",note);
+      //    Serial.println();
+      //  }
+    }
+
+    // Serial.println("123");
+  }
+  if(setting_mode == 0){
+
+  if (h_message.type == 0x00) {
+    cc_on_keymap[h_message.number - 1].now = h_message.message;
+    for (int i = 0; i < 16; i++) {
+      if (cc_on_keymap[i].pre != cc_on_keymap[i].now) {
+        //Serial.print((int)cc_on_keymap[i].pre);
+        if (cc_on_keymap[i].now == 1) {
+          //按下
+          if (sequencer_trigger_pad[i] == false) {
+            Serial.printf("%d trigger on", i);
+            sequencer_trigger_pad[i] = true;
+            //Serial.print((int)cc_trigger_pad[i]);
+          } 
+          else {
+            Serial.printf("%d trigger off", i);
+            sequencer_trigger_pad[i] = false;
+          }
+          //writenote(i, 1);
+        }
+        //  else {
+        //   writenote(i, 0);
+        // }
+      }
+      if (i != sequenceIndex && setting_mode != 0) {
+        switch ((int)sequencer_trigger_pad[i]) {
+          case 0:
+            leds[i] = CRGB::Black;
+            break;
+          case 1:
+            if (i % 4 == 0) {
+              leds[i] = CRGB::Red;
+            } else {
+              leds[i] = CRGB::Blue;
+            }
+
+            break;
+        }
+        //FastLED.show();
+      }
+    }
+    cc_on_keymap[h_message.number - 1].pre = h_message.message;
+
+    u8g2.clearBuffer();
+    drawLogo();
+    u8g2.sendBuffer();
+
+  }
+  else if(h_message.type == 0x02 && h_message.number == 0x08 && h_message.message == 0x00 ){
+    //Serial.println(setting_mode_count);
+    if(setting_mode_count > 5){
+      delay(100);
+      for (int i = 0; i < 16; i++) {
+          leds[i] = CRGB::Black;
+      }
+      FastLED.show();
+      setting_mode = 1;
+    }
+    else{
+      setting_mode_count++;
+    }
+  }
+  }
+
+
+  else if(setting_mode == 1){
+    u8g2.clearBuffer();
+
+    if(h_message.type == 0){
+      if(!(h_message.type == NULL && h_message.number == NULL)){
+        last_recv_message = h_message.number;
+      }
+      draw_setting_key((int)(last_recv_message - 1));
+    }
+    else if(h_message.type == 1){
+      change_setting_page(h_message.message,h_message.number);
+    }
+    u8g2.sendBuffer();
+  }
+
+
+  /*
+  for (int i = 0; i < 16; i++) {
+    switch (led_sta[i]) {
+      case TRIGGER_ON_BLUE:
+        leds[i] = CRGB::Blue;
+        break;
+      case TRIGGER_RISING_ON_GREEN:
+        leds[i] = CRGB::Green;
+        break;
+      case TRIGGER_ON_RED:
+        leds[i] = CRGB::Red;
+        break;
+      case NOTE_ON_WHITE:
+        leds[i] = CRGB::Black;
+        break;
+    }
+    FastLED.show();
+  }
+  */
+}
