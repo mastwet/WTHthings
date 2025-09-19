@@ -1,0 +1,11 @@
+[package]
+name = "rust-fun"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cpal = "0.15.3" # 你可以根据最新的版本调整
+midir = "0.10"      # Ensure this is the latest version
+dasp_sample = "0.11"
